@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -67,4 +68,34 @@ func Verify(endpoint func(w http.ResponseWriter, r *http.Request, _ httprouter.P
 		}
 	})
 
+}
+
+func GetUser(r *http.Request) (string, error) {
+	tokenString := r.Header["Token"][0]
+	if tokenString == "" {
+		return "", errors.New("token string is empty")
+	}
+	claims := jwt.MapClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		return []byte("<YOUR VERIFICATION KEY>"), nil
+	})
+	if err != nil {
+		return "Error while parsing token: ", err
+	}
+	// ... error handling
+
+	// do something with decoded claims
+	for key, val := range claims {
+		fmt.Printf("Key: %v, value: %v\n", key, val)
+
+	}
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if ok {
+		username := claims["username"].(string)
+		return username, nil
+	}
+
+	cusErr := fmt.Errorf("Could not extract user from token")
+
+	return "", cusErr
 }
