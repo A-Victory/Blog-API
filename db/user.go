@@ -3,11 +3,13 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/A-Victory/blog-API/models"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -17,29 +19,32 @@ var (
 )
 
 // UpdateUser interacts directly with the database, updating the user information. It returns nil on success
-func UpdateUser(w http.ResponseWriter, user *models.User, ac *mongo.Database) error {
+func (db DbConn) UpdateUser(w http.ResponseWriter, user *models.User) error {
 	ctx := context.Background()
-	filter := bson.D{{Key: "user", Value: user.Username}}
+	filter := bson.D{primitive.E{Key: "username", Value: user.Username}}
 
 	if user.Firstname != "" {
-		coll := ac.Collection("users")
-		update, err := coll.UpdateOne(ctx, filter, user.Firstname)
+		coll := db.Db.Collection("users")
+		updateFilter := bson.D{{Key: "$set", Value: bson.D{{Key: "firstname", Value: user.Firstname}}}}
+		update, err := coll.UpdateOne(ctx, filter, updateFilter)
 		if err != nil {
 			return ErrConn
 		}
 		json.NewEncoder(w).Encode(update)
 	}
 	if user.Lastname != "" {
-		coll := ac.Collection("users")
-		update, err := coll.UpdateOne(ctx, filter, user.Lastname)
+		coll := db.Db.Collection("users")
+		updateFilter := bson.D{{Key: "$set", Value: bson.D{{Key: "firstname", Value: user.Firstname}}}}
+		update, err := coll.UpdateOne(ctx, filter, updateFilter)
 		if err != nil {
 			return ErrConn
 		}
 		json.NewEncoder(w).Encode(update)
 	}
 	if user.Password != "" {
-		coll := ac.Collection("users")
-		update, err := coll.UpdateOne(ctx, filter, user.Password)
+		coll := db.Db.Collection("users")
+		updateFilter := bson.D{{Key: "$set", Value: bson.D{{Key: "firstname", Value: user.Firstname}}}}
+		update, err := coll.UpdateOne(ctx, filter, updateFilter)
 		if err != nil {
 			return ErrConn
 		}
@@ -48,8 +53,9 @@ func UpdateUser(w http.ResponseWriter, user *models.User, ac *mongo.Database) er
 
 	// In case of email, validation code should be sent to the new email before updating in the database.
 	if user.Email != "" {
-		coll := ac.Collection("users")
-		update, err := coll.UpdateOne(ctx, filter, user.Firstname)
+		coll := db.Db.Collection("users")
+		updateFilter := bson.D{{Key: "$set", Value: bson.D{{Key: "firstname", Value: user.Firstname}}}}
+		update, err := coll.UpdateOne(ctx, filter, updateFilter)
 		if err != nil {
 			return ErrConn
 		}
@@ -59,10 +65,10 @@ func UpdateUser(w http.ResponseWriter, user *models.User, ac *mongo.Database) er
 }
 
 // GetUser returns user password from the database. It returns a nil error if no error is returned.
-func GetUser(user models.User, ac *mongo.Database) (string, error) {
+func (db DbConn) GetUser(user models.User) (string, error) {
 	ctx := context.Background()
-	filter := bson.D{{Key: "email", Value: user.Email}}
-	coll := ac.Collection("users")
+	filter := bson.D{primitive.E{Key: "email", Value: user.Email}}
+	coll := db.Db.Collection("users")
 	find := coll.FindOne(ctx, filter)
 
 	info := models.User{}
@@ -74,11 +80,45 @@ func GetUser(user models.User, ac *mongo.Database) (string, error) {
 }
 
 // CreateUser creates a new user document in the database.
-func CreateUser(user models.User, ac *mongo.Database) (interface{}, error) {
-	coll := ac.Collection("users")
-	insert, err := coll.InsertOne(context.Background(), user)
+func (db DbConn) CreateUser(user models.User) (interface{}, error) {
+	coll := db.Db.Collection("users")
+	insert, err := coll.InsertOne(ctx, user)
 	if err != nil {
 		return nil, ErrConn
 	}
 	return insert.InsertedID, nil
+}
+
+func (db DbConn) DeleteUser(user string) (*mongo.DeleteResult, error) {
+	coll := db.Db.Collection("users")
+	filter := bson.D{primitive.E{Key: "username", Value: user}}
+	delete, err := coll.DeleteOne(ctx, filter)
+	if err != nil {
+		return nil, ErrConn
+	}
+
+	return delete, nil
+}
+
+func (db DbConn) SearchUser(user string) ([]models.Post, error) {
+	posts := []models.Post{}
+
+	filter := bson.D{primitive.E{Key: "username", Value: user}}
+	coll := db.Db.Collection("post")
+	cur, err := coll.Find(ctx, filter)
+	if err != nil {
+		if err == mongo.ErrNilDocument {
+			return nil, errors.New("no record found for user")
+		}
+		return nil, ErrConn
+	}
+
+	for cur.Next(ctx) {
+		err := cur.Decode(posts)
+		if err != nil {
+			return nil, ErrConn
+		}
+	}
+
+	return posts, nil
 }

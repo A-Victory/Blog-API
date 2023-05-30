@@ -21,10 +21,11 @@ func getSession() *mongo.Client {
 	return s
 }
 
-func UserDb() *mongo.Database {
-	return getSession().Database("blog-API")
+func UserDb() *DbConn {
+	db := getSession().Database("blog-API")
+	return &DbConn{db}
 }
 
-type DB struct {
+type DbConn struct {
 	Db *mongo.Database
 }

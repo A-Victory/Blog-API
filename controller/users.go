@@ -12,18 +12,20 @@ import (
 	"github.com/A-Victory/blog-API/models"
 
 	"github.com/julienschmidt/httprouter"
-	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type UserController struct {
-	Db *mongo.Database
+	Db *db.DbConn
+	Va *auth.Validation
 }
 
-func NewUserController(d *mongo.Database) *UserController {
-	return &UserController{d}
+func NewUserController(d *db.DbConn, v *auth.Validation) *UserController {
+	return &UserController{
+		Db: d,
+		Va: v,
+	}
 }
 
 // Signup to create a new user account
@@ -50,10 +52,16 @@ func (uc UserController) Signup(w http.ResponseWriter, r *http.Request, _ httpro
 			return
 		}
 	*/
+	err = uc.Va.ValidateUserInfo(user)
+	if err != nil {
+		http.Error(w, "Error validating user infomation.....", http.StatusInternalServerError)
+		return
+	}
 
-	insert, err := db.CreateUser(user, uc.Db)
+	insert, err := uc.Db.CreateUser(user)
 	if err != nil {
 		http.Error(w, "Error creating account", http.StatusInternalServerError)
+		return
 	}
 	fmt.Fprintln(w, insert)
 	// Send verification token to user email for verification.
@@ -88,7 +96,7 @@ func (uc UserController) Login(w http.ResponseWriter, r *http.Request, _ httprou
 			return
 		}
 	*/
-	passwrd, err := db.GetUser(user, uc.Db)
+	passwrd, err := uc.Db.GetUser(user)
 	if err == db.ErrDb {
 		http.Error(w, "Error getting user information!", http.StatusInternalServerError)
 		return
@@ -149,7 +157,7 @@ func (uc UserController) UpdateInfo(w http.ResponseWriter, r *http.Request, _ ht
 			json.NewEncoder(w).Encode(update)
 		}
 	*/
-	err := db.UpdateUser(w, &user, uc.Db)
+	err := uc.Db.UpdateUser(w, &user)
 	if err != nil {
 		http.Error(w, "Couldn't update user info!", http.StatusInternalServerError)
 		return
@@ -162,10 +170,21 @@ func (uc UserController) UpdateInfo(w http.ResponseWriter, r *http.Request, _ ht
 }
 
 // Search allows a user search for other users. Returning information including the user's posts.
-func Search(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+func (uc UserController) Search(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	// Check to see if authentication is still valid
 
+	user := ps.ByName("user")
 	// Codes that pulls user from database.
+	result, err := uc.Db.SearchUser(user)
+	if err != nil {
+		http.Error(w, "Couldn't update user info!", http.StatusInternalServerError)
+		return
+	}
+	if result == nil {
+		fmt.Fprintln(w, "User does not have any post!")
+	} else {
+		fmt.Fprintf(w, "%v\n", result)
+	}
 	// Displays the user posts, comments and other information.
 	// Returns success
 
@@ -175,15 +194,29 @@ func Search(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 // Profile returns the user's profile.
 func (uc UserController) Profile(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	// Check to see if authentication is still valid
-	ctx := context.Background()
 	// Code to display users posts, comments and other information.
 	// Get post from post databse using the user_id as the filter for search.
+	post := []models.Post{}
+	ctx := context.Background()
+	user, err := auth.GetUser(r)
+	if err != nil {
+
+	}
+	find, err := uc.Db.GetUserPosts(user)
+	if err != nil {
+
+	}
+
+	// Should the post be a slice of post or just a pos?t
+	for find.Next(ctx) {
+		err := find.Decode(post)
+		if err != nil {
+
+		}
+		json.NewEncoder(w).Encode(post)
+	}
 
 	// Get the user info from the authentication(jwt)
-	filter := bson.M{} // parameters for search
-	coll := uc.Db.Collection("users")
-	delete, _ := coll.DeleteOne(ctx, filter)
-	json.NewEncoder(w).Encode(delete)
 	// Returns success
 
 	fmt.Println(w, "models.User profile is displayed")
@@ -192,9 +225,24 @@ func (uc UserController) Profile(w http.ResponseWriter, r *http.Request, _ httpr
 // Feed returns a series of post from multiple users.
 func (uc UserController) Feed(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	// Check to see if authentication is still valid
-
+	post := []models.Post{}
+	ctx := context.Background()
 	// Code that displays posts from all users
+	cur, err := uc.Db.GetPosts()
+	if err != nil {
+		http.Error(w, "Error getting posts from database", http.StatusInternalServerError)
+		return
+	}
+
+	for cur.Next(ctx) {
+		err := cur.Decode(post)
+		if err != nil {
+			http.Error(w, "Error getting posts from database", http.StatusInternalServerError)
+			return
+		}
+	}
 	// Post are shown, user the empty filter to generate the posts.
+	fmt.Fprintf(w, "%v\n", post)
 
 	// Returns success
 
@@ -211,21 +259,23 @@ func (uc UserController) Logout(w http.ResponseWriter, r *http.Request, _ httpro
 // DeleteUser deletes the user information from the database and associated posts as well.
 func (uc UserController) DeleteUser(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	// Check to see if authetication is still valid
-	var user string
-	ctx := context.Background()
-	// Code that deletes the user records from the database.
-	coll := uc.Db.Collection("users")
-	// Use the user_id as the filter.
-	filter := bson.M{"username": user}
-	coll2 := uc.Db.Collection("posts")
-	del, _ := coll2.DeleteMany(ctx, filter)
-	json.NewEncoder(w).Encode(del)
-
-	delete, err := coll.DeleteOne(ctx, filter)
+	user, err := auth.GetUser(r)
 	if err != nil {
-		fmt.Fprint(w, "Error deleting user details")
+
+	}
+	delete, err := uc.Db.DeleteUser(user)
+	if err != nil {
+
 	}
 	json.NewEncoder(w).Encode(delete)
+
+	del, err := uc.Db.DeletePosts(user)
+	if err != nil {
+
+	}
+	json.NewEncoder(w).Encode(del)
+
+	//json.NewEncoder(w).Encode(delete)
 	// Should post and comments be deleted as well?, What about users votes?
 	// Return success.
 

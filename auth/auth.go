@@ -95,7 +95,7 @@ func GetUser(r *http.Request) (string, error) {
 		return username, nil
 	}
 
-	cusErr := fmt.Errorf("Could not extract user from token")
+	cusErr := fmt.Errorf("could not extract user from token")
 
 	return "", cusErr
 }
