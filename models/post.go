@@ -1,15 +1,20 @@
 package models
 
-import "go.mongodb.org/mongo-driver/bson/primitive"
+import (
+	"time"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
+)
 
 type Post struct {
-	Username  string `json:"username" bson:"username"`
-	Header    string `json:"header" bson:"header"`
-	Body      string `json:"post_body" bson:"post_body"`
-	Reactions []Reaction
-	Comments  []Comment
-	User_id   int                `json:"user_id" bson:"user_id"`
-	Id        primitive.ObjectID `json:"id" bson:"_id"`
+	Username   string             `json:"username" bson:"username"`
+	Title      string             `json:"title" bson:"title"`
+	Body       string             `json:"body" bson:"body"`
+	Reactions  []Reaction         `json:"reactions" bson:"reactions"`
+	Comments   []Comment          `json:"comments" bson:"comments"`
+	Created_At time.Time          `json:"created_at" bson:"created_at"`
+	User_id    string             `json:"user_id" bson:"user_id"`
+	Id         primitive.ObjectID `json:"id" bson:"_id"`
 }
 
 type Comment struct {
@@ -18,6 +23,14 @@ type Comment struct {
 }
 
 type Reaction struct {
-	Upvote   string `json:"upvote" bson:"upvote"`
-	Downvote string `json:"downvote" bson:"downvote"`
+	UpVote
+	DownVote
+}
+
+type UpVote struct {
+	User_id primitive.ObjectID `json:"upvote" bson:"upvote"`
+}
+
+type DownVote struct {
+	User_id primitive.ObjectID `json:"downvote" bson:"downvote"`
 }

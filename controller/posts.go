@@ -7,24 +7,31 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/A-Victory/blog-API/auth"
 	"github.com/A-Victory/blog-API/models"
 	"github.com/julienschmidt/httprouter"
 )
 
 // CreatePost creates a new post
-func (uc UserController) CreatePost(w http.ResponseWriter, r *http.Request) {
-	post := models.Post{}
-	if err := json.NewDecoder(r.Body).Decode(&post); err != nil {
+func (uc UserController) CreatePost(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	post := &models.Post{}
+	if err := json.NewDecoder(r.Body).Decode(post); err != nil {
 		fmt.Fprintln(w, "Error decoding JSON")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	post.Created_At = time.Now()
+	user, err := auth.GetUser(r)
+	if err != nil {
+		fmt.Fprintln(w, "Unable to retrieve user information!")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	// Code that stores the user_id in the post struct.
 	// Code that get the user_id and stores it in the post struct.
 
 	// Write code that stores the post in database.
-	insert, err := uc.Db.CreatePost(post)
+	insert, err := uc.Db.CreatePost(user, post)
 	if err != nil {
 		fmt.Fprintln(w, "Unable to upload post")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -36,10 +43,11 @@ func (uc UserController) CreatePost(w http.ResponseWriter, r *http.Request) {
 }
 
 // DeletePost deletes the post from the database.
-func (uc UserController) DeletePost(w http.ResponseWriter, r *http.Request) {
+func (uc UserController) DeletePost(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	// Get post from database using post id
 	// verify the id
-	id := r.URL.Query().Get("id")
+	id := ps.ByName("id")
+	//id := r.URL.Query().Get("id")
 	newID, err := strconv.Atoi(id)
 	if err != nil {
 		fmt.Fprintln(w, "unable to parse string to int:", err)
@@ -60,10 +68,11 @@ func (uc UserController) DeletePost(w http.ResponseWriter, r *http.Request) {
 }
 
 // EditPost edits an already existing post
-func (uc UserController) EditPost(w http.ResponseWriter, r *http.Request) {
+func (uc UserController) EditPost(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	// Get post from database
 	post := models.Post{}
-	id := r.URL.Query().Get("id")
+	id := ps.ByName("id")
+	//id := r.URL.Query().Get("id")
 	newID, err := strconv.Atoi(id)
 	if err != nil {
 		fmt.Fprintln(w, "unable to parse string to int:", err)
@@ -91,10 +100,11 @@ func (uc UserController) EditPost(w http.ResponseWriter, r *http.Request) {
 }
 
 // ViewPost retrieves a particular post
-func (uc UserController) ViewPost(w http.ResponseWriter, r *http.Request) {
+func (uc UserController) ViewPost(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	// Get post from database
 	post := models.Post{}
-	id := r.URL.Query().Get("id")
+	id := ps.ByName("id")
+	//id := r.URL.Query().Get("id")
 	newID, err := strconv.Atoi(id)
 	if err != nil {
 		fmt.Fprintln(w, "unable to parse string to int:", err)
@@ -115,9 +125,10 @@ func (uc UserController) ViewPost(w http.ResponseWriter, r *http.Request) {
 }
 
 // AddComment adds a new comment to a post
-func (uc UserController) AddComment(w http.ResponseWriter, r *http.Request) {
+func (uc UserController) AddComment(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	// Get the post from database
-	id := r.URL.Query().Get("id")
+	id := ps.ByName("id")
+	//id := r.URL.Query().Get("id")
 	newID, err := strconv.Atoi(id)
 	if err != nil {
 		fmt.Fprintln(w, "unable to parse string to int:", err)
