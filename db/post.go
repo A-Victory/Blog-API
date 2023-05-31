@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"errors"
 
 	"github.com/A-Victory/blog-API/models"
 	"go.mongodb.org/mongo-driver/bson"
@@ -66,10 +67,15 @@ func (db DbConn) UpdatePost(id int, p models.Post) (*mongo.UpdateResult, error) 
 }
 
 // Comment creates(adds) a comment field to a post document in the database
-func (db DbConn) Comment(id int, com models.Comment) (*mongo.UpdateResult, error) {
+func (db DbConn) Comment(id string, com models.Comment) (*mongo.UpdateResult, error) {
 	coll := db.Db.Collection("posts")
+	PostId, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return nil, errors.New("id is not a valid post id")
+	}
+	filter := bson.D{primitive.E{Key: "_id", Value: PostId}}
 	update := bson.D{{Key: "$push", Value: bson.D{primitive.E{Key: "comments", Value: bson.D{{Key: "$each", Value: com}}}}}}
-	upload, err := coll.UpdateByID(ctx, id, update)
+	upload, err := coll.UpdateByID(ctx, filter, update)
 	if err != nil {
 		return nil, ErrConn
 	}
@@ -127,9 +133,13 @@ func (db DbConn) GetUserPosts(user string) (*mongo.Cursor, error) {
 }
 
 // DeleteComment deletes a comment from a post document.
-func (db *DbConn) DeleteComment(id int, user string) (*mongo.UpdateResult, error) {
+func (db *DbConn) DeleteComment(id string, user string) (*mongo.UpdateResult, error) {
 	coll := db.Db.Collection("posts")
-	filter := bson.D{primitive.E{Key: "_id", Value: id}}
+	postID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return nil, errors.New("id is not valid")
+	}
+	filter := bson.D{primitive.E{Key: "_id", Value: postID}}
 	update := bson.M{"$pull": bson.M{"comments": bson.M{"username": user}}}
 
 	delete, err := coll.UpdateOne(ctx, filter, update)

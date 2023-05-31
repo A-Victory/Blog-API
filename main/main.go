@@ -22,6 +22,6 @@ func main() {
 		Addr:    ":" + port,
 		Handler: r,
 	}
-	fmt.Println("Starting server on port " + port)
+	fmt.Println("Starting server on port: " + port)
 	log.Fatal(s.ListenAndServe())
 }

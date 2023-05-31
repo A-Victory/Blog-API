@@ -129,12 +129,7 @@ func (uc UserController) AddComment(w http.ResponseWriter, r *http.Request, ps h
 	// Get the post from database
 	id := ps.ByName("id")
 	//id := r.URL.Query().Get("id")
-	newID, err := strconv.Atoi(id)
-	if err != nil {
-		fmt.Fprintln(w, "unable to parse string to int:", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
+
 	com := models.Comment{}
 
 	if err := json.NewDecoder(r.Body).Decode(&com); err != nil {
@@ -144,7 +139,7 @@ func (uc UserController) AddComment(w http.ResponseWriter, r *http.Request, ps h
 	}
 
 	// Attach the comment to the post sending all to the database.
-	upload, err := uc.Db.Comment(newID, com)
+	upload, err := uc.Db.Comment(id, com)
 	if err != nil {
 		fmt.Fprintln(w, "Error uploading comment to database")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -159,12 +154,8 @@ func (uc UserController) AddComment(w http.ResponseWriter, r *http.Request, ps h
 func (uc UserController) DeleteComment(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	id := ps.ByName("id")
 	user := ps.ByName("user")
-	newID, err := strconv.Atoi(id)
-	if err != nil {
 
-	}
-
-	delete, err := uc.Db.DeleteComment(newID, user)
+	delete, err := uc.Db.DeleteComment(id, user)
 	if err != nil {
 		fmt.Fprintln(w, "Error deleting comment from database")
 		w.WriteHeader(http.StatusInternalServerError)
