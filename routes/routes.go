@@ -15,6 +15,7 @@ var Routers = func(r *httprouter.Router) {
 	r.POST("/signup", uc.Signup)
 	r.POST("/login", uc.Login)
 
+	r.GET("/search/:user", auth.Verify(uc.Search))
 	r.GET("/profile", auth.Verify(uc.Profile))
 	r.PATCH("/user", auth.Verify(uc.UpdateInfo))
 	r.GET("/logout", auth.Verify(uc.Logout))
