@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"fmt"
+
 	"github.com/A-Victory/blog-API/models"
 	"github.com/go-playground/validator/v10"
 )
@@ -17,7 +19,9 @@ func NewValidator() *Validation {
 func (va *Validation) ValidateUserInfo(u models.User) error {
 	err := va.validate.Struct(u)
 	if err != nil {
-		return err
+		for _, err := range err.(validator.ValidationErrors) {
+			return fmt.Errorf("%s is required to sign-up", err.Field())
+		}
 	}
 	return nil
 }

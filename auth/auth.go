@@ -4,19 +4,39 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/julienschmidt/httprouter"
 )
 
+/*
+type Claims struct {
+	username string
+	jwt.RegisteredClaims
+}
+*/
+
 func GenerateJWT(user string) (string, error) {
+	/*
+		expires_at := time.Now().Add(15 * time.Minute)
+
+		claims := &Claims{
+			username: user,
+			RegisteredClaims: jwt.RegisteredClaims{
+				ExpiresAt: jwt.NewNumericDate(expires_at),
+			},
+		}
+	*/
+	//token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	token := jwt.New(jwt.SigningMethodHS256)
-	singingKey := []byte("secretkey")
+	singingKey := []byte(os.Getenv("SIGNINGKEY"))
+
 	claims := token.Claims.(jwt.MapClaims)
-	claims["user"] = user
+	claims["username"] = user
 	claims["authorized"] = true
-	claims["Exp"] = time.Now().Add(15 * time.Minute)
+	claims["exp"] = time.Now().Add(15 * time.Minute)
 	tokenString, err := token.SignedString(singingKey)
 	if err != nil {
 		fmt.Println("Error signing token: ", err)
@@ -36,7 +56,7 @@ func Verify(endpoint func(w http.ResponseWriter, r *http.Request, _ httprouter.P
 			return
 		}
 
-		singingKey := []byte("secretkey")
+		singingKey := []byte(os.Getenv("SIGNINGKEY"))
 
 		tokenstring := r.Header["Token"][0]
 		if tokenstring == "" {
@@ -53,7 +73,8 @@ func Verify(endpoint func(w http.ResponseWriter, r *http.Request, _ httprouter.P
 		})
 
 		if err != nil {
-			fmt.Println("Error while parsing token: ", err)
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprintln(w, "Unauthorized access: ", err)
 			return
 		}
 
@@ -75,27 +96,27 @@ func GetUser(r *http.Request) (string, error) {
 	if tokenString == "" {
 		return "", errors.New("token string is empty")
 	}
-	claims := jwt.MapClaims{}
-	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-		return []byte("<YOUR VERIFICATION KEY>"), nil
+
+	signingkey := []byte(os.Getenv("SIGNINGKEY"))
+
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("%v", "There was an error in parsing token.")
+		}
+		return signingkey, nil
 	})
 	if err != nil {
-		return "Error while parsing token: ", err
+		return "", err
 	}
 	// ... error handling
 
 	// do something with decoded claims
-	for key, val := range claims {
-		fmt.Printf("Key: %v, value: %v\n", key, val)
-
-	}
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if ok {
-		username := claims["username"].(string)
-		return username, nil
+	claim, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", fmt.Errorf("error decoding user info from token")
 	}
 
-	cusErr := fmt.Errorf("could not extract user from token")
+	username := claim["username"].(string)
 
-	return "", cusErr
+	return username, nil
 }

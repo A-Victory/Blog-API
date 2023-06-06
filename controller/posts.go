@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
-	"time"
 
 	"github.com/A-Victory/blog-API/auth"
 	"github.com/A-Victory/blog-API/models"
@@ -15,13 +13,16 @@ import (
 // CreatePost creates a new post
 func (uc UserController) CreatePost(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	post := &models.Post{}
+	w.Header().Set("Content-Type", "application/json")
+
 	if err := json.NewDecoder(r.Body).Decode(post); err != nil {
 		fmt.Fprintln(w, "Error decoding JSON")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	post.Created_At = time.Now()
+
 	user, err := auth.GetUser(r)
+	json.NewEncoder(w).Encode(user)
 	if err != nil {
 		fmt.Fprintln(w, "Unable to retrieve user information!")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -33,12 +34,10 @@ func (uc UserController) CreatePost(w http.ResponseWriter, r *http.Request, ps h
 	// Write code that stores the post in database.
 	insert, err := uc.Db.CreatePost(user, post)
 	if err != nil {
-		fmt.Fprintln(w, "Unable to upload post")
-		w.WriteHeader(http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(insert)
 }
 
@@ -48,14 +47,9 @@ func (uc UserController) DeletePost(w http.ResponseWriter, r *http.Request, ps h
 	// verify the id
 	id := ps.ByName("id")
 	//id := r.URL.Query().Get("id")
-	newID, err := strconv.Atoi(id)
-	if err != nil {
-		fmt.Fprintln(w, "unable to parse string to int:", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
+
 	// Delete Post from database.
-	delete, err := uc.Db.DeletePost(newID)
+	delete, err := uc.Db.DeletePost(id)
 	if err != nil {
 		fmt.Fprintln(w, "Failed to delete post")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -73,12 +67,6 @@ func (uc UserController) EditPost(w http.ResponseWriter, r *http.Request, ps htt
 	post := models.Post{}
 	id := ps.ByName("id")
 	//id := r.URL.Query().Get("id")
-	newID, err := strconv.Atoi(id)
-	if err != nil {
-		fmt.Fprintln(w, "unable to parse string to int:", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
 
 	if err := json.NewDecoder(r.Body).Decode(&post); err != nil {
 		fmt.Fprintln(w, "Error decoding JSON")
@@ -86,7 +74,7 @@ func (uc UserController) EditPost(w http.ResponseWriter, r *http.Request, ps htt
 		return
 	}
 
-	update, err := uc.Db.UpdatePost(newID, post)
+	update, err := uc.Db.UpdatePost(id, post)
 	if err != nil {
 		fmt.Fprintln(w, "Failed to update post")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -105,14 +93,8 @@ func (uc UserController) ViewPost(w http.ResponseWriter, r *http.Request, ps htt
 	post := models.Post{}
 	id := ps.ByName("id")
 	//id := r.URL.Query().Get("id")
-	newID, err := strconv.Atoi(id)
-	if err != nil {
-		fmt.Fprintln(w, "unable to parse string to int:", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
 
-	res := uc.Db.GetPost(newID)
+	res := uc.Db.GetPost(id)
 	if err := res.Decode(&post); err != nil {
 		fmt.Fprintln(w, "Error decoding post from database")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -153,7 +135,12 @@ func (uc UserController) AddComment(w http.ResponseWriter, r *http.Request, ps h
 // DeleteComment deletes comment from post.
 func (uc UserController) DeleteComment(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	id := ps.ByName("id")
-	user := ps.ByName("user")
+	user, err := auth.GetUser(r)
+	if err != nil {
+		fmt.Fprintln(w, "Unable to retrieve user information!")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 
 	delete, err := uc.Db.DeleteComment(id, user)
 	if err != nil {

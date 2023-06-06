@@ -13,6 +13,7 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -43,30 +44,35 @@ func (uc UserController) Signup(w http.ResponseWriter, r *http.Request, _ httpro
 		log.Fatal("Error generating password: ", err)
 	}
 	user.Password = string(hashpswd)
-	// Write code that saves the user information in database.
-	/*
-		coll := uc.Db.Collection("users")
-		insert, err := coll.InsertOne(context.Background(), user)
-		if err != nil {
-			fmt.Fprintln(w, "Unable to insert user")
-			return
-		}
-	*/
+
 	err = uc.Va.ValidateUserInfo(user)
 	if err != nil {
-		http.Error(w, "Error validating user infomation.....", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	insert, err := uc.Db.CreateUser(user)
+	_, _, err = uc.Db.GetUser(user)
 	if err != nil {
-		http.Error(w, "Error creating account", http.StatusInternalServerError)
+		if err == mongo.ErrNoDocuments {
+			insert, err := uc.Db.CreateUser(user)
+			if err != nil {
+				http.Error(w, "Error creating accounting, please try again...", http.StatusInternalServerError)
+				return
+			}
+			fmt.Fprintln(w, insert)
+
+		}
+	} else {
+		fmt.Fprintln(w, "Email already registered to an account! Please try again...")
+		w.WriteHeader(http.StatusAlreadyReported)
 		return
 	}
-	fmt.Fprintln(w, insert)
 	// Send verification token to user email for verification.
 	// If no error is encountered, return success.
-	fmt.Fprintln(w, "Account created!!")
+	fmt.Fprintln(w, "Account successfully created!")
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
 }
 
 // Login allows user to login in to existing account, creating a JWT token in the process.
@@ -84,21 +90,10 @@ func (uc UserController) Login(w http.ResponseWriter, r *http.Request, _ httprou
 	if user.Email == "" {
 		fmt.Fprintln(w, "Please provide an email address")
 	}
-	/*
-		filter := bson.D{{Key: "email", Value: user.Email}}
-		coll := uc.Db.Collection("users")
-		find := coll.FindOne(ctx, filter)
 
-		info := models.User{}
-		err := find.Decode(&info)
-		if err != nil {
-			fmt.Fprintln(w, "Account does not exist, please signup for a new account...")
-			return
-		}
-	*/
-	passwrd, err := uc.Db.GetUser(user)
-	if err == db.ErrDb {
-		http.Error(w, "Error getting user information!", http.StatusInternalServerError)
+	username, passwrd, err := uc.Db.GetUser(user)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -107,22 +102,30 @@ func (uc UserController) Login(w http.ResponseWriter, r *http.Request, _ httprou
 		return
 	}
 	// Send verification token to user email to create a token that stays valid for 15min of inactivity. After which a new token will have to be generated.
-	token, err := auth.GenerateJWT(user.Username)
+	token, err := auth.GenerateJWT(username)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 	w.Header().Set("Token", token)
 	w.Header().Set("Content-Type", "application/json")
 	// Write the string to the database?
 	// If no error is returned, login is successful
 
-	fmt.Fprintln(w, "Login successful")
+	fmt.Fprintln(w, "Login successful!")
 }
 
 // UpdateInfo updates the user resources in the database.
 func (uc UserController) UpdateInfo(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	// Check to see if authentication is still valid
-	r.Header.Set("Content-Type", "application/Json")
+	w.Header().Set("Content-Type", "application/json")
+	username, err := auth.GetUser(r)
+	json.NewEncoder(w).Encode(username)
+	if err != nil {
+		fmt.Fprintln(w, err.Error())
+		return
+	}
+
 	user := models.User{}
 	//ctx := context.Background()
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
@@ -130,42 +133,14 @@ func (uc UserController) UpdateInfo(w http.ResponseWriter, r *http.Request, _ ht
 		return
 	}
 
-	// Update fields provided by user.
-	/*
-		filter := bson.D{{Key: "user", Value: user.Username}}
-
-		if user.Firstname != "" {
-			coll := uc.Db.Collection("users")
-			update, _ := coll.UpdateOne(ctx, filter, user.Firstname)
-			json.NewEncoder(w).Encode(update)
-		}
-		if user.Lastname != "" {
-			coll := uc.Db.Collection("users")
-			update, _ := coll.UpdateOne(ctx, filter, user.Lastname)
-			json.NewEncoder(w).Encode(update)
-		}
-		if user.Password != "" {
-			coll := uc.Db.Collection("users")
-			update, _ := coll.UpdateOne(ctx, filter, user.Password)
-			json.NewEncoder(w).Encode(update)
-		}
-
-		// In case of email, validation code should be sent to the new email before updating in the database.
-		if user.Email != "" {
-			coll := uc.Db.Collection("users")
-			update, _ := coll.UpdateOne(ctx, filter, user.Firstname)
-			json.NewEncoder(w).Encode(update)
-		}
-	*/
-	err := uc.Db.UpdateUser(w, &user)
+	err = uc.Db.UpdateUser(w, username, &user)
 	if err != nil {
 		http.Error(w, "Couldn't update user info!", http.StatusInternalServerError)
 		return
 	}
 	// Return success if no error is encountered.]
-	w.Header().Set("Content-Type", "application/json")
 
-	fmt.Fprintln(w, "models.User records updated successfully")
+	fmt.Fprintln(w, "user details successfully updated. ")
 
 }
 
@@ -173,22 +148,24 @@ func (uc UserController) UpdateInfo(w http.ResponseWriter, r *http.Request, _ ht
 func (uc UserController) Search(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	// Check to see if authentication is still valid
 
+	w.Header().Set("Content-Type", "application/json")
 	user := ps.ByName("user")
 	// Codes that pulls user from database.
 	result, err := uc.Db.SearchUser(user)
 	if err != nil {
-		http.Error(w, "Couldn't update user info!", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if result == nil {
+	if len(result) == 0 {
 		fmt.Fprintln(w, "User does not have any post!")
+		return
 	} else {
 		fmt.Fprintf(w, "%v\n", result)
 	}
 	// Displays the user posts, comments and other information.
 	// Returns success
 
-	fmt.Fprintln(w, "models.User is displayed")
+	json.NewEncoder(w).Encode(result)
 }
 
 // Profile returns the user's profile.
@@ -200,18 +177,25 @@ func (uc UserController) Profile(w http.ResponseWriter, r *http.Request, _ httpr
 	ctx := context.Background()
 	user, err := auth.GetUser(r)
 	if err != nil {
-
+		fmt.Fprintln(w, "Unable to retrieve user information!")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
+
 	find, err := uc.Db.GetUserPosts(user)
 	if err != nil {
-
+		fmt.Fprintln(w, "cowuld not find user's posts: ", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 
 	// Should the post be a slice of post or just a pos?t
 	for find.Next(ctx) {
 		err := find.Decode(post)
 		if err != nil {
-
+			fmt.Fprintln(w, "error decoding post into struct: ", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
 		json.NewEncoder(w).Encode(post)
 	}
@@ -261,23 +245,31 @@ func (uc UserController) DeleteUser(w http.ResponseWriter, r *http.Request, _ ht
 	// Check to see if authetication is still valid
 	user, err := auth.GetUser(r)
 	if err != nil {
-
+		fmt.Fprintln(w, "Unable to retrieve user information!")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 	delete, err := uc.Db.DeleteUser(user)
 	if err != nil {
-
+		fmt.Fprintln(w, "error deleting user from collection: ", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 	json.NewEncoder(w).Encode(delete)
 
 	del, err := uc.Db.DeletePosts(user)
 	if err != nil {
-
+		fmt.Fprintln(w, "error deleting user's posts from collection: ", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
+
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(del)
 
 	//json.NewEncoder(w).Encode(delete)
 	// Should post and comments be deleted as well?, What about users votes?
 	// Return success.
 
-	fmt.Fprintln(w, "models.User deleted successfully")
+	fmt.Fprintln(w, "User deleted successfully!")
 }
