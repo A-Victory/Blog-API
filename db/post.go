@@ -3,6 +3,8 @@ package db
 import (
 	"context"
 	"errors"
+	"fmt"
+	"time"
 
 	"github.com/A-Victory/blog-API/models"
 	"go.mongodb.org/mongo-driver/bson"
@@ -17,34 +19,55 @@ var ctx = context.Background()
 func (db DbConn) CreatePost(u string, p *models.Post) (*mongo.InsertOneResult, error) {
 	user := models.User{}
 	coll := db.Db.Collection("users")
-	filter := bson.D{primitive.E{Key: "username", Value: u}}
+	filter := bson.M{"username": u}
 	res := coll.FindOne(ctx, filter)
 	if err := res.Decode(&user); err != nil {
-		return nil, ErrConn
+		return nil, fmt.Errorf("could not retrieve user from user collection: %v", err)
+	}
+	p.Username = u
+	p.Id = primitive.NewObjectID()
+	p.Created_At = time.Now()
+	p.User_id = user.Id.Hex()
+	coll2 := db.Db.Collection("posts")
+	insert, err := coll2.InsertOne(ctx, p)
+	if err != nil {
+		return nil, fmt.Errorf("unable to insert post: %v", err)
 	}
 
-	p.User_id = primitive.ObjectID.String(user.Id)
-	coll1 := db.Db.Collection("posts")
-	insert, err := coll1.InsertOne(ctx, p)
+	inserted := insert.InsertedID.(primitive.ObjectID)
+	coll3 := db.Db.Collection("users")
+	filter2 := bson.D{primitive.E{Key: "username", Value: u}}
+	update := bson.D{{Key: "$push", Value: bson.D{primitive.E{Key: "post_id", Value: inserted.Hex()}}}}
+	_, err = coll3.UpdateOne(ctx, filter2, update)
 	if err != nil {
-		return nil, ErrConn
-	}
-
-	inserted := insert.InsertedID.(string)
-	coll2 := db.Db.Collection("users")
-	filter1 := bson.D{primitive.E{Key: "username", Value: u}}
-	update := bson.D{{Key: "$push", Value: bson.D{primitive.E{Key: "post_id", Value: bson.D{{Key: "$each", Value: inserted}}}}}}
-	_, err = coll2.UpdateOne(ctx, filter1, update)
-	if err != nil {
-		return nil, ErrConn
+		return nil, fmt.Errorf("could not upate postID in user collection: %v", err)
 	}
 	return insert, nil
 }
 
 // DeletePost deletes a post document from the database
-func (db DbConn) DeletePost(id int) (*mongo.DeleteResult, error) {
+func (db DbConn) DeletePost(id string) (*mongo.DeleteResult, error) {
+	newID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return nil, fmt.Errorf("postID %v is not a valid", id)
+	}
+	post := models.Post{}
 	coll := db.Db.Collection("posts")
-	filter := bson.D{primitive.E{Key: "_id", Value: id}}
+	filter := bson.D{primitive.E{Key: "_id", Value: newID}}
+	// Delete the post from the users collection too
+	find := coll.FindOne(ctx, filter)
+	if err := find.Decode(&post); err != nil {
+		return nil, fmt.Errorf("error decoding post: %v", err)
+	}
+
+	coll2 := db.Db.Collection("users")
+	filter2 := bson.M{"username": post.Username}
+	update := bson.D{{Key: "$pull", Value: bson.D{primitive.E{Key: "post_id", Value: newID.Hex()}}}}
+	_, err = coll2.UpdateOne(ctx, filter2, update)
+	if err != nil {
+		return nil, fmt.Errorf("unable to update user's collection: %v", err)
+	}
+
 	delete, err := coll.DeleteOne(ctx, filter)
 	if err != nil {
 		return nil, ErrConn
@@ -55,9 +78,13 @@ func (db DbConn) DeletePost(id int) (*mongo.DeleteResult, error) {
 }
 
 // UpdatePost updates an existing post
-func (db DbConn) UpdatePost(id int, p models.Post) (*mongo.UpdateResult, error) {
+func (db DbConn) UpdatePost(id string, p models.Post) (*mongo.UpdateResult, error) {
+	newID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return nil, fmt.Errorf("postID %v is not a valid", id)
+	}
 	coll := db.Db.Collection("posts")
-	filter := bson.D{primitive.E{Key: "_id", Value: id}}
+	filter := bson.D{primitive.E{Key: "_id", Value: newID}}
 	update := bson.D{{Key: "$set", Value: p}}
 	UpdateResult, err := coll.UpdateOne(ctx, filter, update)
 	if err != nil {
@@ -84,9 +111,13 @@ func (db DbConn) Comment(id string, com models.Comment) (*mongo.UpdateResult, er
 }
 
 // GetPost returns a post document from the database.
-func (db DbConn) GetPost(id int) *mongo.SingleResult {
+func (db DbConn) GetPost(id string) *mongo.SingleResult {
+	newID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return nil
+	}
 	coll := db.Db.Collection("posts")
-	filter := bson.D{primitive.E{Key: "_id", Value: id}}
+	filter := bson.D{primitive.E{Key: "_id", Value: newID}}
 	post := coll.FindOne(ctx, filter)
 
 	return post
@@ -110,6 +141,8 @@ func (db DbConn) GetPosts() (*mongo.Cursor, error) {
 func (db DbConn) DeletePosts(user string) (*mongo.DeleteResult, error) {
 	coll := db.Db.Collection("posts")
 	filter := bson.D{primitive.E{Key: "username", Value: user}}
+
+	// Delete the posts from the users collection as well
 
 	delete, err := coll.DeleteMany(ctx, filter)
 	if err != nil {

@@ -26,8 +26,8 @@ var Routers = func(r *httprouter.Router) {
 	r.DELETE("/post/:id", auth.Verify(uc.DeletePost))
 	r.PUT("/post/:id", auth.Verify(uc.EditPost))
 	r.GET("/post/:id/", auth.Verify(uc.ViewPost))
-	r.DELETE("/post/:id/comment/:user", auth.Verify(uc.DeleteComment))
-	r.POST("/post/comment", auth.Verify(uc.AddComment))
+	r.DELETE("/post/comment/:id", auth.Verify(uc.DeleteComment))
+	r.POST("/post/comment/:id", auth.Verify(uc.AddComment))
 
 	r.GET("/upvote/:id", auth.Verify(uc.Upvote))
 	r.GET("/downvote/:id", auth.Verify(uc.Downvote))

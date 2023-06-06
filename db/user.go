@@ -15,13 +15,12 @@ import (
 
 var (
 	ErrDb   = fmt.Errorf("user not found")
-	ErrConn = fmt.Errorf("error connecting to db server")
+	ErrConn = fmt.Errorf("error communicating with db server")
 )
 
 // UpdateUser interacts directly with the database, updating the user information. It returns nil on success
-func (db DbConn) UpdateUser(w http.ResponseWriter, user *models.User) error {
-	ctx := context.Background()
-	filter := bson.D{primitive.E{Key: "username", Value: user.Username}}
+func (db DbConn) UpdateUser(w http.ResponseWriter, username string, user *models.User) error {
+	filter := bson.M{"username": username}
 
 	if user.Firstname != "" {
 		coll := db.Db.Collection("users")
@@ -30,53 +29,57 @@ func (db DbConn) UpdateUser(w http.ResponseWriter, user *models.User) error {
 		if err != nil {
 			return ErrConn
 		}
-		json.NewEncoder(w).Encode(update)
+		json.NewEncoder(w).Encode(update.MatchedCount)
 	}
 	if user.Lastname != "" {
 		coll := db.Db.Collection("users")
-		updateFilter := bson.D{{Key: "$set", Value: bson.D{{Key: "firstname", Value: user.Firstname}}}}
+		updateFilter := bson.D{{Key: "$set", Value: bson.D{{Key: "lastnamw", Value: user.Lastname}}}}
 		update, err := coll.UpdateOne(ctx, filter, updateFilter)
 		if err != nil {
 			return ErrConn
 		}
-		json.NewEncoder(w).Encode(update)
-	}
-	if user.Password != "" {
-		coll := db.Db.Collection("users")
-		updateFilter := bson.D{{Key: "$set", Value: bson.D{{Key: "firstname", Value: user.Firstname}}}}
-		update, err := coll.UpdateOne(ctx, filter, updateFilter)
-		if err != nil {
-			return ErrConn
-		}
-		json.NewEncoder(w).Encode(update)
+		json.NewEncoder(w).Encode(update.MatchedCount)
 	}
 
-	// In case of email, validation code should be sent to the new email before updating in the database.
-	if user.Email != "" {
-		coll := db.Db.Collection("users")
-		updateFilter := bson.D{{Key: "$set", Value: bson.D{{Key: "firstname", Value: user.Firstname}}}}
-		update, err := coll.UpdateOne(ctx, filter, updateFilter)
-		if err != nil {
-			return ErrConn
+	// create a seperate function for updating password using bycrpt package.
+	/*
+		if user.Password != "" {
+			coll := db.Db.Collection("users")
+			updateFilter := bson.D{{Key: "$set", Value: bson.D{{Key: "firstname", Value: user.Firstname}}}}
+			update, err := coll.UpdateOne(ctx, filter, updateFilter)
+			if err != nil {
+				return ErrConn
+			}
+			json.NewEncoder(w).Encode(update.MatchedCount)
 		}
-		json.NewEncoder(w).Encode(update)
-	}
+
+		// In case of email, validation code should be sent to the new email before updating in the database.
+		if user.Email != "" {
+			coll := db.Db.Collection("users")
+			updateFilter := bson.D{{Key: "$set", Value: bson.D{{Key: "firstname", Value: user.Firstname}}}}
+			update, err := coll.UpdateOne(ctx, filter, updateFilter)
+			if err != nil {
+				return ErrConn
+			}
+			json.NewEncoder(w).Encode(update.MatchedCount)
+		}
+	*/
 	return nil
 }
 
 // GetUser returns user password from the database. It returns a nil error if no error is returned.
-func (db DbConn) GetUser(user models.User) (string, error) {
+func (db DbConn) GetUser(user models.User) (username, password string, err error) {
 	ctx := context.Background()
 	filter := bson.D{primitive.E{Key: "email", Value: user.Email}}
 	coll := db.Db.Collection("users")
 	find := coll.FindOne(ctx, filter)
 
 	info := models.User{}
-	err := find.Decode(&info)
+	err = find.Decode(&info)
 	if err != nil {
-		return "", ErrDb
+		return "", "", err
 	}
-	return info.Password, nil
+	return info.Username, info.Password, nil
 }
 
 // CreateUser creates a new user document in the database.
@@ -103,8 +106,16 @@ func (db DbConn) DeleteUser(user string) (*mongo.DeleteResult, error) {
 func (db DbConn) SearchUser(user string) ([]models.Post, error) {
 	posts := []models.Post{}
 
-	filter := bson.D{primitive.E{Key: "username", Value: user}}
-	coll := db.Db.Collection("post")
+	filter := bson.M{"username": user}
+	coll := db.Db.Collection("posts")
+	int, err := coll.CountDocuments(ctx, bson.D{})
+	if err != nil {
+		if int <= 1 {
+			return nil, fmt.Errorf("post collection not yet created")
+		}
+		return nil, err
+	}
+
 	cur, err := coll.Find(ctx, filter)
 	if err != nil {
 		if err == mongo.ErrNilDocument {

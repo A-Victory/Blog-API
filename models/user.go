@@ -7,7 +7,11 @@ type User struct {
 	Lastname  string             `json:"lastname" bson:"lastname" validate:"omitempty"`
 	Username  string             `json:"username" bson:"username" validate:"required"`
 	Email     string             `json:"email" bson:"email" validate:"required,email"`
-	Password  string             `json:"password" bson:"password" validate:"required,min=8,alphanum"`
-	Post_Id   []string           `json:"post_id" bson:"post_id"`
+	Password  string             `json:"password" bson:"password" validate:"required,min=8"`
+	Post_Id   []Post_ID          `json:"posts" bson:"posts"`
 	Id        primitive.ObjectID `json:"id" bson:"_id"`
+}
+
+type Post_ID struct {
+	Post_id string `json:"post_id" bson:"post_id"`
 }
