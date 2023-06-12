@@ -7,10 +7,15 @@ import (
 	"os"
 
 	"github.com/A-Victory/blog-API/routes"
+	"github.com/joho/godotenv"
 	"github.com/julienschmidt/httprouter"
 )
 
 func main() {
+	err := godotenv.Load(".env")
+	if err != nil {
+		panic(err)
+	}
 	r := httprouter.New()
 	routes.Routers(r)
 

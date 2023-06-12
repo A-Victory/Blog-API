@@ -3,7 +3,9 @@ package controller
 // How to add likes and dislike?
 // Do you store in a database? If so, how?
 import (
+	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/A-Victory/blog-API/auth"
@@ -15,48 +17,49 @@ import (
 
 func (uc UserController) Upvote(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	// Get the value from the request
+	w.Header().Set("Content-Type", "application/json")
 	post_id := ps.ByName("id")
 
 	user, err := auth.GetUser(r)
 	if err != nil {
-		fmt.Fprintln(w, "Error getting user info")
 		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintln(w, "Error getting user info")
 		return
 	}
 
-	if err := uc.Db.UpVote(post_id, user); err != nil {
-		fmt.Fprintln(w, "unable to implement DownVote!")
+	err = uc.Db.UpVote(post_id, user)
+	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
+		log.Println(err.Error())
+		fmt.Fprintln(w, "unable to implement UpVote!")
 		return
 	}
 	// How do I get the user?
 	// After getting the user, use it for the filter
-
+	json.NewEncoder(w).Encode("Upvote successfull")
 	// Upload to the database the the post id to the appropriate vote column
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
 }
 
 func (uc UserController) Downvote(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	// Get the value from the request
+	w.Header().Set("Content-Type", "application/json")
 	post_id := ps.ByName("id")
 
 	user, err := auth.GetUser(r)
 	if err != nil {
-		fmt.Fprintln(w, "Error getting user info")
 		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintln(w, "Error getting user info")
 		return
 	}
 
 	if err := uc.Db.DownVote(post_id, user); err != nil {
-		fmt.Fprintln(w, "unable to implement DownVote!")
 		w.WriteHeader(http.StatusInternalServerError)
+		log.Println(err.Error())
+		fmt.Fprintln(w, "unable to implement DownVote!")
 		return
 	}
 	// How do I get the user?
 	// After getting the user, use it for the filter
-
+	json.NewEncoder(w).Encode("Downvote successfull")
 	// Upload to the database the the post id to the appropriate vote column
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
 }

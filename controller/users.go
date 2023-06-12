@@ -105,7 +105,11 @@ func (uc UserController) Login(w http.ResponseWriter, r *http.Request, _ httprou
 	username, passwrd, err := uc.Db.GetUser(user)
 	if err != nil {
 		log.Println(err.Error())
-		http.Error(w, "An error occure, try again...", http.StatusInternalServerError)
+		if err == mongo.ErrNoDocuments {
+			http.Error(w, "Email not registered, signup...", http.StatusInternalServerError)
+			return
+		}
+		http.Error(w, "An error occured, try again...", http.StatusInternalServerError)
 		return
 	}
 
