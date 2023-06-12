@@ -21,10 +21,12 @@ func (db DbConn) UpVote(postID, user string) error {
 		return err
 	}
 
+	vote := models.UpVote{}
+	vote.Id = userStruct.Id.Hex()
 	coll1 := db.Db.Collection("posts")
-	filter1 := bson.D{primitive.E{Key: "_id", Value: post_ID}}
-	update := bson.D{{Key: "$push", Value: bson.D{primitive.E{Key: "reactions", Value: bson.D{primitive.E{Key: "upvotes", Value: bson.D{primitive.E{Key: "$each", Value: userStruct.Id}}}}}}}}
-	_, err = coll1.UpdateByID(ctx, filter1, update)
+	filter1 := bson.M{"_id": post_ID}
+	update := bson.D{{Key: "$push", Value: bson.D{primitive.E{Key: "reactions.upvote", Value: vote}}}}
+	_, err = coll1.UpdateOne(ctx, filter1, update)
 	if err != nil {
 		return err
 	}
@@ -47,10 +49,12 @@ func (db DbConn) DownVote(postID, user string) error {
 		return err
 	}
 
+	vote := models.UpVote{}
+	vote.Id = userStruct.Id.Hex()
 	coll1 := db.Db.Collection("posts")
 	filter1 := bson.D{primitive.E{Key: "_id", Value: Post_ID}}
-	update := bson.D{{Key: "$push", Value: bson.D{primitive.E{Key: "reactions", Value: bson.D{primitive.E{Key: "downvotes", Value: bson.D{primitive.E{Key: "$each", Value: userStruct.Id}}}}}}}}
-	_, err = coll1.UpdateByID(ctx, filter1, update)
+	update := bson.D{{Key: "$push", Value: bson.D{primitive.E{Key: "reactions.downvote", Value: vote}}}}
+	_, err = coll1.UpdateOne(ctx, filter1, update)
 	if err != nil {
 		return err
 	}

@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"os"
 
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -9,7 +10,8 @@ import (
 )
 
 func getSession() *mongo.Client {
-	cltOptns := options.Client().ApplyURI("mongodb://localhost:27017")
+	mongoString := os.Getenv("MONGO")
+	cltOptns := options.Client().ApplyURI(mongoString)
 	s, err := mongo.Connect(context.TODO(), cltOptns)
 
 	if err != nil {
