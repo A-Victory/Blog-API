@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/A-Victory/blog-API/auth"
 	"github.com/A-Victory/blog-API/db"
@@ -15,6 +16,8 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 type UserController struct {
@@ -32,6 +35,7 @@ func NewUserController(d *db.DbConn, v *auth.Validation) *UserController {
 // Signup to create a new user account
 func (uc UserController) Signup(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 
+	w.Header().Set("Content-Type", "application/json")
 	user := models.User{}
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
 		fmt.Fprintln(w, "Error decoding JSON")
@@ -51,7 +55,13 @@ func (uc UserController) Signup(w http.ResponseWriter, r *http.Request, _ httpro
 		return
 	}
 
-	_, _, err = uc.Db.GetUser(user)
+	username, _, err := uc.Db.GetUser(user)
+	if username == user.Username {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintln(w, "Username already exists! Try again...")
+		return
+	}
+
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			insert, err := uc.Db.CreateUser(user)
@@ -59,41 +69,43 @@ func (uc UserController) Signup(w http.ResponseWriter, r *http.Request, _ httpro
 				http.Error(w, "Error creating accounting, please try again...", http.StatusInternalServerError)
 				return
 			}
-			fmt.Fprintln(w, insert)
+			json.NewEncoder(w).Encode(insert)
 
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
 	} else {
-		fmt.Fprintln(w, "Email already registered to an account! Please try again...")
 		w.WriteHeader(http.StatusAlreadyReported)
+		fmt.Fprintln(w, "Email already registered to an account! Please try again...")
 		return
 	}
-	// Send verification token to user email for verification.
-	// If no error is encountered, return success.
-	fmt.Fprintln(w, "Account successfully created!")
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
+	report := "Account successfully created!"
+	json.NewEncoder(w).Encode(report)
+
 }
 
 // Login allows user to login in to existing account, creating a JWT token in the process.
 func (uc UserController) Login(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	r.Header.Set("Content-Type", "application/Json")
+	w.Header().Set("Content-Type", "application/json")
 	user := models.User{}
-	//ctx := context.Background()
 
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintln(w, "Error decoding JSON")
 		return
 	}
 
 	// Check the validity of information provided by the user in database
 	if user.Email == "" {
-		fmt.Fprintln(w, "Please provide an email address")
+		fmt.Fprintln(w, "Please input an email address!")
 	}
 
 	username, passwrd, err := uc.Db.GetUser(user)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Println(err.Error())
+		http.Error(w, "An error occure, try again...", http.StatusInternalServerError)
 		return
 	}
 
@@ -101,18 +113,22 @@ func (uc UserController) Login(w http.ResponseWriter, r *http.Request, _ httprou
 		fmt.Fprintln(w, "Incorrect password!!")
 		return
 	}
-	// Send verification token to user email to create a token that stays valid for 15min of inactivity. After which a new token will have to be generated.
+
 	token, err := auth.GenerateJWT(username)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Token", token)
-	w.Header().Set("Content-Type", "application/json")
-	// Write the string to the database?
-	// If no error is returned, login is successful
+	c := &http.Cookie{
+		Name:    "session",
+		Value:   token,
+		Expires: time.Now().Add(15 * time.Minute),
+	}
+	http.SetCookie(w, c)
 
-	fmt.Fprintln(w, "Login successful!")
+	report := "Login successful!"
+	json.NewEncoder(w).Encode(report)
 }
 
 // UpdateInfo updates the user resources in the database.
@@ -135,6 +151,7 @@ func (uc UserController) UpdateInfo(w http.ResponseWriter, r *http.Request, _ ht
 
 	err = uc.Db.UpdateUser(w, username, &user)
 	if err != nil {
+		log.Println(err.Error())
 		http.Error(w, "Couldn't update user info!", http.StatusInternalServerError)
 		return
 	}
@@ -146,69 +163,79 @@ func (uc UserController) UpdateInfo(w http.ResponseWriter, r *http.Request, _ ht
 
 // Search allows a user search for other users. Returning information including the user's posts.
 func (uc UserController) Search(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	// Check to see if authentication is still valid
 
 	w.Header().Set("Content-Type", "application/json")
-	user := ps.ByName("user")
-	// Codes that pulls user from database.
-	result, err := uc.Db.SearchUser(user)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if len(result) == 0 {
-		fmt.Fprintln(w, "User does not have any post!")
-		return
-	} else {
-		fmt.Fprintf(w, "%v\n", result)
-	}
-	// Displays the user posts, comments and other information.
-	// Returns success
+	user := ps.ByName("name")
+	username := cases.Title(language.English).String(user)
+	posts := []models.Post{}
+	ctx := context.Background()
 
-	json.NewEncoder(w).Encode(result)
+	// Codes that pulls user from database.
+	cur, err := uc.Db.SearchUser(username)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Println(err.Error())
+		fmt.Fprintln(w, "Username not registered!")
+		//http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	err = cur.All(ctx, &posts)
+	if err != nil {
+		log.Println(err.Error())
+		http.Error(w, "An error occured, try again...", http.StatusInternalServerError)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if len(posts) == 0 {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintln(w, "no record found for user!!")
+		return
+	}
+
+	json.NewEncoder(w).Encode(posts)
 }
 
 // Profile returns the user's profile.
 func (uc UserController) Profile(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	// Check to see if authentication is still valid
-	// Code to display users posts, comments and other information.
-	// Get post from post databse using the user_id as the filter for search.
-	post := []models.Post{}
+
+	w.Header().Set("Content-Type", "application/json")
+	post := models.Post{}
 	ctx := context.Background()
 	user, err := auth.GetUser(r)
 	if err != nil {
-		fmt.Fprintln(w, "Unable to retrieve user information!")
 		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintln(w, "Unable to retrieve user information!")
 		return
 	}
 
 	find, err := uc.Db.GetUserPosts(user)
 	if err != nil {
-		fmt.Fprintln(w, "cowuld not find user's posts: ", err)
 		w.WriteHeader(http.StatusInternalServerError)
+		log.Println(err.Error())
+		fmt.Fprintln(w, "An error occured, try again... ")
 		return
 	}
 
 	// Should the post be a slice of post or just a pos?t
 	for find.Next(ctx) {
-		err := find.Decode(post)
+		err := find.Decode(&post)
 		if err != nil {
-			fmt.Fprintln(w, "error decoding post into struct: ", err)
 			w.WriteHeader(http.StatusInternalServerError)
+			log.Print("error decoding post into struct: ", err)
+			fmt.Fprintln(w, "An error occurred, try again...")
 			return
 		}
 		json.NewEncoder(w).Encode(post)
 	}
 
-	// Get the user info from the authentication(jwt)
-	// Returns success
-
-	fmt.Println(w, "models.User profile is displayed")
 }
 
 // Feed returns a series of post from multiple users.
 func (uc UserController) Feed(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	// Check to see if authentication is still valid
+	w.Header().Set("Content-Type", "application/json")
 	post := []models.Post{}
 	ctx := context.Background()
 	// Code that displays posts from all users
@@ -218,35 +245,37 @@ func (uc UserController) Feed(w http.ResponseWriter, r *http.Request, _ httprout
 		return
 	}
 
-	for cur.Next(ctx) {
-		err := cur.Decode(post)
-		if err != nil {
-			http.Error(w, "Error getting posts from database", http.StatusInternalServerError)
-			return
-		}
+	err = cur.All(ctx, &post)
+	if err != nil {
+		http.Error(w, "Error getting posts from database", http.StatusInternalServerError)
+		return
 	}
-	// Post are shown, user the empty filter to generate the posts.
-	fmt.Fprintf(w, "%v\n", post)
 
-	// Returns success
+	json.NewEncoder(w).Encode(post)
 
-	fmt.Fprintln(w, "Feed is displayed")
 }
 
 // Logout lets the user log out, deleting the JWT token in the process
 func (uc UserController) Logout(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	// Check to see if authentication is still valid
 	// Delete current session and redirect to login page.
+	c := &http.Cookie{
+		Name:   "",
+		Value:  "",
+		MaxAge: -1,
+	}
 
+	http.SetCookie(w, c)
 }
 
 // DeleteUser deletes the user information from the database and associated posts as well.
 func (uc UserController) DeleteUser(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	// Check to see if authetication is still valid
+	w.Header().Set("Content-Type", "application/json")
 	user, err := auth.GetUser(r)
 	if err != nil {
-		fmt.Fprintln(w, "Unable to retrieve user information!")
 		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintln(w, "could not retrieve user info, please try again...")
 		return
 	}
 	delete, err := uc.Db.DeleteUser(user)
@@ -264,12 +293,38 @@ func (uc UserController) DeleteUser(w http.ResponseWriter, r *http.Request, _ ht
 		return
 	}
 
+	log.Println(del)
+	report := "User deleted successfully!"
+	json.NewEncoder(w).Encode(report)
+
+}
+
+func (uc UserController) ChangePassword(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(del)
+	p := models.Password{}
+	user, err := auth.GetUser(r)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintln(w, "could not retrieve user info, please try again...")
+		return
+	}
+	json.NewDecoder(r.Body).Decode(&p)
 
-	//json.NewEncoder(w).Encode(delete)
-	// Should post and comments be deleted as well?, What about users votes?
-	// Return success.
+	if p.New != p.Confirm {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintln(w, "new passwords do not match!, try again")
+		return
+	}
 
-	fmt.Fprintln(w, "User deleted successfully!")
+	result, err := uc.Db.ChangePassword(user, p)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintln(w, "An error occurred, try again!")
+		log.Print(err)
+		return
+	}
+
+	log.Println(result)
+
+	json.NewEncoder(w).Encode("Password change successful.")
 }

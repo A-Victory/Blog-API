@@ -15,3 +15,9 @@ type User struct {
 type Post_ID struct {
 	Post_id string `json:"post_id" bson:"post_id"`
 }
+
+type Password struct {
+	Old     string `json:"old password"`
+	New     string `json:"new password"`
+	Confirm string `json:"confirm password"`
+}

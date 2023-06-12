@@ -3,11 +3,13 @@ package controller
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/A-Victory/blog-API/auth"
 	"github.com/A-Victory/blog-API/models"
 	"github.com/julienschmidt/httprouter"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 // CreatePost creates a new post
@@ -16,20 +18,18 @@ func (uc UserController) CreatePost(w http.ResponseWriter, r *http.Request, ps h
 	w.Header().Set("Content-Type", "application/json")
 
 	if err := json.NewDecoder(r.Body).Decode(post); err != nil {
-		fmt.Fprintln(w, "Error decoding JSON")
 		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintln(w, "Error decoding JSON")
 		return
 	}
 
 	user, err := auth.GetUser(r)
 	json.NewEncoder(w).Encode(user)
 	if err != nil {
-		fmt.Fprintln(w, "Unable to retrieve user information!")
 		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintln(w, "Unable to retrieve user information!")
 		return
 	}
-	// Code that stores the user_id in the post struct.
-	// Code that get the user_id and stores it in the post struct.
 
 	// Write code that stores the post in database.
 	insert, err := uc.Db.CreatePost(user, post)
@@ -38,118 +38,130 @@ func (uc UserController) CreatePost(w http.ResponseWriter, r *http.Request, ps h
 		return
 	}
 
-	json.NewEncoder(w).Encode(insert)
+	log.Println(insert.InsertedID)
+
+	json.NewEncoder(w).Encode("Successfully created post!")
 }
 
 // DeletePost deletes the post from the database.
 func (uc UserController) DeletePost(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	// Get post from database using post id
-	// verify the id
+
+	w.Header().Set("Content-Type", "application/json")
 	id := ps.ByName("id")
-	//id := r.URL.Query().Get("id")
 
 	// Delete Post from database.
 	delete, err := uc.Db.DeletePost(id)
 	if err != nil {
-		fmt.Fprintln(w, "Failed to delete post")
 		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintln(w, "An error occurred while deleting post, try again...")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(delete)
+	log.Println(delete)
+
+	json.NewEncoder(w).Encode("Successfully deleted post!")
 
 }
 
 // EditPost edits an already existing post
 func (uc UserController) EditPost(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	// Get post from database
-	post := models.Post{}
-	id := ps.ByName("id")
-	//id := r.URL.Query().Get("id")
-
-	if err := json.NewDecoder(r.Body).Decode(&post); err != nil {
-		fmt.Fprintln(w, "Error decoding JSON")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	update, err := uc.Db.UpdatePost(id, post)
-	if err != nil {
-		fmt.Fprintln(w, "Failed to update post")
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(update)
-	// Send the updated fields to the database
+	post := models.Post{}
+	id := ps.ByName("id")
+
+	if err := json.NewDecoder(r.Body).Decode(&post); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintln(w, "Error decoding JSON")
+		return
+	}
+
+	err := uc.Db.UpdatePost(w, id, post)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintln(w, "An error occurred while updating post, please try again...")
+		return
+	}
+
+	json.NewEncoder(w).Encode("Successfuly updated post!")
 
 }
 
 // ViewPost retrieves a particular post
 func (uc UserController) ViewPost(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	// Get post from database
+
+	w.Header().Set("Content-Type", "application/json")
 	post := models.Post{}
 	id := ps.ByName("id")
-	//id := r.URL.Query().Get("id")
 
 	res := uc.Db.GetPost(id)
 	if err := res.Decode(&post); err != nil {
-		fmt.Fprintln(w, "Error decoding post from database")
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+		if err == mongo.ErrNoDocuments {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintln(w, "Id does not match an existing post!")
+			return
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			log.Println(err.Error())
+			fmt.Fprintln(w, "Error encountered while getting post from database, please try again...")
+			return
+		}
 	}
 
 	//Display the post.
-	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(post)
 }
 
 // AddComment adds a new comment to a post
 func (uc UserController) AddComment(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	// Get the post from database
+
+	w.Header().Set("Content-Type", "application/json")
 	id := ps.ByName("id")
-	//id := r.URL.Query().Get("id")
 
 	com := models.Comment{}
 
 	if err := json.NewDecoder(r.Body).Decode(&com); err != nil {
-		fmt.Fprintln(w, "Error decoding JSON")
 		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintln(w, "Error while decoding JSON")
 		return
 	}
 
 	// Attach the comment to the post sending all to the database.
 	upload, err := uc.Db.Comment(id, com)
 	if err != nil {
-		fmt.Fprintln(w, "Error uploading comment to database")
 		w.WriteHeader(http.StatusInternalServerError)
+		log.Println(err.Error())
+		fmt.Fprintln(w, "Error while uploading comment to database, please try again...")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(upload)
+	log.Println(upload)
+
+	json.NewEncoder(w).Encode("Comment has been uploaded!")
 }
 
 // DeleteComment deletes comment from post.
 func (uc UserController) DeleteComment(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+
+	w.Header().Set("Content-Type", "application/json")
 	id := ps.ByName("id")
 	user, err := auth.GetUser(r)
 	if err != nil {
-		fmt.Fprintln(w, "Unable to retrieve user information!")
 		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintln(w, "Unable to retrieve user information!")
 		return
 	}
 
 	delete, err := uc.Db.DeleteComment(id, user)
 	if err != nil {
-		fmt.Fprintln(w, "Error deleting comment from database")
 		w.WriteHeader(http.StatusInternalServerError)
+		log.Println(err.Error())
+		fmt.Fprintln(w, "Error while deleting comment from database, please try again...")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(delete)
+	log.Println(delete)
+
+	json.NewEncoder(w).Encode("Post successfully deleted!")
 
 }

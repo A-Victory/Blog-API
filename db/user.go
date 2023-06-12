@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/A-Victory/blog-API/models"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var (
@@ -33,7 +35,7 @@ func (db DbConn) UpdateUser(w http.ResponseWriter, username string, user *models
 	}
 	if user.Lastname != "" {
 		coll := db.Db.Collection("users")
-		updateFilter := bson.D{{Key: "$set", Value: bson.D{{Key: "lastnamw", Value: user.Lastname}}}}
+		updateFilter := bson.D{{Key: "$set", Value: bson.D{{Key: "lastname", Value: user.Lastname}}}}
 		update, err := coll.UpdateOne(ctx, filter, updateFilter)
 		if err != nil {
 			return ErrConn
@@ -41,43 +43,23 @@ func (db DbConn) UpdateUser(w http.ResponseWriter, username string, user *models
 		json.NewEncoder(w).Encode(update.MatchedCount)
 	}
 
-	// create a seperate function for updating password using bycrpt package.
-	/*
-		if user.Password != "" {
-			coll := db.Db.Collection("users")
-			updateFilter := bson.D{{Key: "$set", Value: bson.D{{Key: "firstname", Value: user.Firstname}}}}
-			update, err := coll.UpdateOne(ctx, filter, updateFilter)
-			if err != nil {
-				return ErrConn
-			}
-			json.NewEncoder(w).Encode(update.MatchedCount)
-		}
-
-		// In case of email, validation code should be sent to the new email before updating in the database.
-		if user.Email != "" {
-			coll := db.Db.Collection("users")
-			updateFilter := bson.D{{Key: "$set", Value: bson.D{{Key: "firstname", Value: user.Firstname}}}}
-			update, err := coll.UpdateOne(ctx, filter, updateFilter)
-			if err != nil {
-				return ErrConn
-			}
-			json.NewEncoder(w).Encode(update.MatchedCount)
-		}
-	*/
 	return nil
 }
 
 // GetUser returns user password from the database. It returns a nil error if no error is returned.
 func (db DbConn) GetUser(user models.User) (username, password string, err error) {
 	ctx := context.Background()
-	filter := bson.D{primitive.E{Key: "email", Value: user.Email}}
+	filter := bson.M{"email": user.Email}
 	coll := db.Db.Collection("users")
 	find := coll.FindOne(ctx, filter)
 
 	info := models.User{}
 	err = find.Decode(&info)
 	if err != nil {
-		return "", "", err
+		if err == mongo.ErrNoDocuments {
+			return "", "", err
+		}
+		return "", "", fmt.Errorf("an error occurred, please try again")
 	}
 	return info.Username, info.Password, nil
 }
@@ -103,33 +85,51 @@ func (db DbConn) DeleteUser(user string) (*mongo.DeleteResult, error) {
 	return delete, nil
 }
 
-func (db DbConn) SearchUser(user string) ([]models.Post, error) {
-	posts := []models.Post{}
+func (db DbConn) SearchUser(user string) (*mongo.Cursor, error) {
 
 	filter := bson.M{"username": user}
-	coll := db.Db.Collection("posts")
-	int, err := coll.CountDocuments(ctx, bson.D{})
-	if err != nil {
-		if int <= 1 {
-			return nil, fmt.Errorf("post collection not yet created")
-		}
-		return nil, err
+	userData := db.Db.Collection("users").FindOne(ctx, filter)
+	if userData.Err() == mongo.ErrNoDocuments {
+		return nil, errors.New("user does not exist, enter a valid username")
 	}
+
+	coll := db.Db.Collection("posts")
 
 	cur, err := coll.Find(ctx, filter)
 	if err != nil {
-		if err == mongo.ErrNilDocument {
-			return nil, errors.New("no record found for user")
-		}
-		return nil, ErrConn
+		return nil, errors.New("no record found for user")
 	}
 
-	for cur.Next(ctx) {
-		err := cur.Decode(posts)
-		if err != nil {
-			return nil, ErrConn
-		}
+	return cur, nil
+}
+
+func (db DbConn) ChangePassword(user string, password models.Password) (*mongo.UpdateResult, error) {
+
+	u := models.User{}
+	p := password
+	coll := db.Db.Collection("users")
+	filter := bson.D{primitive.E{Key: "username", Value: user}}
+	if err := coll.FindOne(ctx, filter).Decode(&u); err != nil {
+		return nil, errors.New("unable to decode into user: " + err.Error())
+	}
+	err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(p.Old))
+	if err != nil {
+		return nil, fmt.Errorf("password mismatch: %v", err)
 	}
 
-	return posts, nil
+	newHashed, err := bcrypt.GenerateFromPassword([]byte(p.New), 8)
+	if err != nil {
+		log.Print("Error generating password: ", err)
+		return nil, err
+	}
+
+	hashpswd := string(newHashed)
+
+	update := bson.D{{Key: "$set", Value: bson.D{{Key: "password", Value: hashpswd}}}}
+	result, err := coll.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
 }

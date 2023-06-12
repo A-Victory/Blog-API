@@ -10,7 +10,7 @@ type Post struct {
 	Username   string             `json:"username" bson:"username"`
 	Title      string             `json:"title" bson:"title"`
 	Body       string             `json:"body" bson:"body"`
-	Reactions  []Reaction         `json:"reactions" bson:"reactions"`
+	Reactions  Reaction           `json:"reactions" bson:"reactions"`
 	Comments   []Comment          `json:"comments" bson:"comments"`
 	Created_At time.Time          `json:"created_at" bson:"created_at"`
 	User_id    string             `json:"user_id" bson:"user_id"`
@@ -18,19 +18,20 @@ type Post struct {
 }
 
 type Comment struct {
-	Username string `json:"username" bson:"username"`
-	Body     string `json:"comment_body" bson:"comment_body"`
+	ID       primitive.ObjectID `json:"id" bson:"_id"`
+	Username string             `json:"username" bson:"username"`
+	Body     string             `json:"body" bson:"body"`
 }
 
 type Reaction struct {
-	UpVote
-	DownVote
+	UpVote   []UpVote   `json:"upvote" bson:"upvote"`
+	DownVote []DownVote `json:"downvote" bson:"downvote"`
 }
 
 type UpVote struct {
-	User_id primitive.ObjectID `json:"upvote" bson:"upvote"`
+	Id string `json:"user_id" bson:"user_id"`
 }
 
 type DownVote struct {
-	User_id primitive.ObjectID `json:"downvote" bson:"downvote"`
+	Id string `json:"user_id" bson:"user_id"`
 }

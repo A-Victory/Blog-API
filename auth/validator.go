@@ -20,7 +20,7 @@ func (va *Validation) ValidateUserInfo(u models.User) error {
 	err := va.validate.Struct(u)
 	if err != nil {
 		for _, err := range err.(validator.ValidationErrors) {
-			return fmt.Errorf("%s is required to sign-up", err.Field())
+			return fmt.Errorf("please input %s, field is required!", err.Field())
 		}
 	}
 	return nil
