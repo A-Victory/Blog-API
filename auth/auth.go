@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -49,7 +50,7 @@ func GenerateJWT(user string) (string, error) {
 
 func Verify(endpoint func(w http.ResponseWriter, r *http.Request, _ httprouter.Params)) httprouter.Handle {
 	return httprouter.Handle(func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-		if r.Header.Get("Token") == "" {
+		if r.Header.Get("Authorization") == "" {
 			_, err := w.Write([]byte("You're Unauthorized due to invalid token"))
 			if err != nil {
 				return
@@ -59,14 +60,16 @@ func Verify(endpoint func(w http.ResponseWriter, r *http.Request, _ httprouter.P
 
 		singingKey := []byte(os.Getenv("SIGNINGKEY"))
 
-		tokenstring := r.Header["Token"][0]
-		if tokenstring == "" {
+		fullstring := r.Header["Authorization"][0]
+		if fullstring == "" {
 			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprintln(w, "User not authorized please login!")
 			return
 		}
 
-		token, err := jwt.Parse(tokenstring, func(t *jwt.Token) (interface{}, error) {
+		tokenString := strings.Split(fullstring, " ")
+
+		token, err := jwt.Parse(tokenString[1], func(t *jwt.Token) (interface{}, error) {
 			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("%v", "There was an error in parsing token.")
 			}
@@ -111,14 +114,16 @@ func Verify(endpoint func(w http.ResponseWriter, r *http.Request, _ httprouter.P
 }
 
 func GetUser(r *http.Request) (string, error) {
-	tokenString := r.Header["Token"][0]
-	if tokenString == "" {
+	fullString := r.Header["Authorization"][0]
+	if fullString == "" {
 		return "", errors.New("token string is empty")
 	}
 
+	tokenString := strings.Split(fullString, " ")
+
 	signingkey := []byte(os.Getenv("SIGNINGKEY"))
 
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.Parse(tokenString[1], func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("%v", "There was an error in parsing token.")
 		}

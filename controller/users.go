@@ -125,9 +125,12 @@ func (uc UserController) Login(w http.ResponseWriter, r *http.Request, _ httprou
 	}
 	w.Header().Set("Token", token)
 	c := &http.Cookie{
-		Name:    "session",
-		Value:   token,
-		Expires: time.Now().Add(15 * time.Minute),
+		Name:     "user",
+		Value:    user.Username,
+		HttpOnly: true,
+		Path:     "/",
+		SameSite: http.SameSiteStrictMode,
+		Expires:  time.Now().Add(15 * time.Minute),
 	}
 	http.SetCookie(w, c)
 
@@ -268,6 +271,7 @@ func (uc UserController) Logout(w http.ResponseWriter, r *http.Request, _ httpro
 		Value:  "",
 		MaxAge: -1,
 	}
+	w.Header().Set("Authorization", "Bearer")
 
 	http.SetCookie(w, c)
 }
@@ -297,6 +301,15 @@ func (uc UserController) DeleteUser(w http.ResponseWriter, r *http.Request, _ ht
 		return
 	}
 
+	w.Header().Set("Authorization", "Bearer ")
+
+	c := &http.Cookie{
+		Name:   "",
+		Value:  "",
+		MaxAge: -1,
+	}
+
+	http.SetCookie(w, c)
 	log.Println(del)
 	report := "User deleted successfully!"
 	json.NewEncoder(w).Encode(report)

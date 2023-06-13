@@ -9,6 +9,7 @@ import (
 	"github.com/A-Victory/blog-API/auth"
 	"github.com/A-Victory/blog-API/models"
 	"github.com/julienschmidt/httprouter"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -24,7 +25,6 @@ func (uc UserController) CreatePost(w http.ResponseWriter, r *http.Request, ps h
 	}
 
 	user, err := auth.GetUser(r)
-	json.NewEncoder(w).Encode(user)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintln(w, "Unable to retrieve user information!")
@@ -40,7 +40,7 @@ func (uc UserController) CreatePost(w http.ResponseWriter, r *http.Request, ps h
 
 	log.Println(insert.InsertedID)
 
-	json.NewEncoder(w).Encode("Successfully created post!")
+	json.NewEncoder(w).Encode("Successfully created post!\n Post ID: " + insert.InsertedID.(primitive.ObjectID).Hex())
 }
 
 // DeletePost deletes the post from the database.
@@ -59,7 +59,7 @@ func (uc UserController) DeletePost(w http.ResponseWriter, r *http.Request, ps h
 
 	log.Println(delete)
 
-	json.NewEncoder(w).Encode("Successfully deleted post!")
+	json.NewEncoder(w).Encode("Successfully deleted post with id: " + id)
 
 }
 
@@ -83,7 +83,7 @@ func (uc UserController) EditPost(w http.ResponseWriter, r *http.Request, ps htt
 		return
 	}
 
-	json.NewEncoder(w).Encode("Successfuly updated post!")
+	json.NewEncoder(w).Encode("Successfuly updated post with id: " + id)
 
 }
 
@@ -137,7 +137,7 @@ func (uc UserController) AddComment(w http.ResponseWriter, r *http.Request, ps h
 
 	log.Println(upload)
 
-	json.NewEncoder(w).Encode("Comment has been uploaded!")
+	json.NewEncoder(w).Encode("Comment has been uploaded to post with id: " + id + "!")
 }
 
 // DeleteComment deletes comment from post.
@@ -162,6 +162,6 @@ func (uc UserController) DeleteComment(w http.ResponseWriter, r *http.Request, p
 
 	log.Println(delete)
 
-	json.NewEncoder(w).Encode("Post successfully deleted!")
+	json.NewEncoder(w).Encode("Post with id: " + id + " has been successfully deleted!")
 
 }
