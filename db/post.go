@@ -135,12 +135,13 @@ func (db DbConn) UpdatePost(w http.ResponseWriter, id string, p models.Post) err
 }
 
 // Comment creates(adds) a comment field to a post document in the database
-func (db DbConn) Comment(id string, com models.Comment) (*mongo.UpdateResult, error) {
+func (db DbConn) Comment(user, id string, com models.Comment) (*mongo.UpdateResult, error) {
 	coll := db.Db.Collection("posts")
 	PostId, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
 		return nil, errors.New("id is not a valid post id")
 	}
+	com.Username = user
 	com.ID = primitive.NewObjectID()
 	filter := bson.M{"_id": PostId}
 	update := bson.D{{Key: "$push", Value: bson.D{primitive.E{Key: "comments", Value: com}}}}

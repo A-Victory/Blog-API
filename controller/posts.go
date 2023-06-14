@@ -117,7 +117,12 @@ func (uc UserController) AddComment(w http.ResponseWriter, r *http.Request, ps h
 
 	w.Header().Set("Content-Type", "application/json")
 	id := ps.ByName("id")
-
+	user, err := auth.GetUser(r)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintln(w, "Unable to retrieve user information!")
+		return
+	}
 	com := models.Comment{}
 
 	if err := json.NewDecoder(r.Body).Decode(&com); err != nil {
@@ -127,7 +132,7 @@ func (uc UserController) AddComment(w http.ResponseWriter, r *http.Request, ps h
 	}
 
 	// Attach the comment to the post sending all to the database.
-	upload, err := uc.Db.Comment(id, com)
+	upload, err := uc.Db.Comment(user, id, com)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Println(err.Error())

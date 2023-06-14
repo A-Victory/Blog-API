@@ -336,7 +336,7 @@ func (uc UserController) ChangePassword(w http.ResponseWriter, r *http.Request, 
 	result, err := uc.Db.ChangePassword(user, p)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintln(w, "An error occurred, try again!")
+		fmt.Fprintln(w, "Old password is incorrect! Try again...")
 		log.Print(err)
 		return
 	}
