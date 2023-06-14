@@ -40,7 +40,7 @@ func (uc UserController) CreatePost(w http.ResponseWriter, r *http.Request, ps h
 
 	log.Println(insert.InsertedID)
 
-	json.NewEncoder(w).Encode("Successfully created post!\n Post ID: " + insert.InsertedID.(primitive.ObjectID).Hex())
+	json.NewEncoder(w).Encode("Successfully created post, with post ID: " + insert.InsertedID.(primitive.ObjectID).Hex())
 }
 
 // DeletePost deletes the post from the database.
