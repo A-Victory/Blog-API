@@ -94,7 +94,7 @@ func (db DbConn) DeletePost(id string) (*mongo.DeleteResult, error) {
 }
 
 // UpdatePost updates an existing post
-func (db DbConn) UpdatePost(w http.ResponseWriter, id string, p models.Post) error {
+func (db DbConn) UpdatePost(w http.ResponseWriter, user, id string, p models.Post) error {
 	newID, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
 		return fmt.Errorf("postID %v is not a valid", id)
@@ -224,4 +224,26 @@ func (db *DbConn) DeleteComment(id string, user string) (*mongo.UpdateResult, er
 	}
 
 	return delete, nil
+}
+
+func (db *DbConn) GetUserPost(user, id string) (bool, error) {
+	u := models.User{}
+	userColl := db.Db.Collection("Users")
+	filt := bson.M{"username": user}
+	err := userColl.FindOne(ctx, filt).Decode(&u)
+	if err != nil {
+		return false, fmt.Errorf("could not retrieve user from user collection: %v", err)
+	}
+
+	var ok bool
+	for _, pID := range u.Post_Id {
+		if pID.Post_id == id {
+			ok = true
+			return ok, nil
+		} else {
+			return ok, fmt.Errorf("post is not associated with this user: %v", pID)
+		}
+	}
+
+	return ok, nil
 }

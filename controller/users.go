@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"time"
 
 	"github.com/A-Victory/blog-API/auth"
 	"github.com/A-Victory/blog-API/db"
@@ -124,15 +123,6 @@ func (uc UserController) Login(w http.ResponseWriter, r *http.Request, _ httprou
 		return
 	}
 	w.Header().Set("Token", token)
-	c := &http.Cookie{
-		Name:     "user",
-		Value:    user.Username,
-		HttpOnly: true,
-		Path:     "/",
-		SameSite: http.SameSiteStrictMode,
-		Expires:  time.Now().Add(15 * time.Minute),
-	}
-	http.SetCookie(w, c)
 
 	report := "Login successful!"
 	json.NewEncoder(w).Encode(report)
@@ -266,14 +256,8 @@ func (uc UserController) Feed(w http.ResponseWriter, r *http.Request, _ httprout
 func (uc UserController) Logout(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	// Check to see if authentication is still valid
 	// Delete current session and redirect to login page.
-	c := &http.Cookie{
-		Name:   "",
-		Value:  "",
-		MaxAge: -1,
-	}
-	w.Header().Set("Authorization", "Bearer")
+	w.Header().Del("Authorization")
 
-	http.SetCookie(w, c)
 }
 
 // DeleteUser deletes the user information from the database and associated posts as well.
@@ -301,17 +285,10 @@ func (uc UserController) DeleteUser(w http.ResponseWriter, r *http.Request, _ ht
 		return
 	}
 
-	w.Header().Set("Authorization", "Bearer ")
+	w.Header().Del("Authorization")
 
-	c := &http.Cookie{
-		Name:   "",
-		Value:  "",
-		MaxAge: -1,
-	}
-
-	http.SetCookie(w, c)
 	log.Println(del)
-	report := "User deleted successfully!"
+	report := "User profile has been successfully deleted!"
 	json.NewEncoder(w).Encode(report)
 
 }

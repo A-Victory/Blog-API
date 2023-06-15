@@ -16,7 +16,7 @@ var Routers = func(r *httprouter.Router) {
 	r.POST("/login", uc.Login)
 
 	// requires authentication
-	r.POST("/changepassword", uc.ChangePassword)
+	r.POST("/changepassword", auth.Verify(uc.ChangePassword))
 
 	r.GET("/search/:name", auth.Verify(uc.Search))
 	r.GET("/profile", auth.Verify(uc.Profile))

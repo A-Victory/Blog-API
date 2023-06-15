@@ -70,15 +70,29 @@ func (uc UserController) EditPost(w http.ResponseWriter, r *http.Request, ps htt
 	post := models.Post{}
 	id := ps.ByName("id")
 
+	user, err := auth.GetUser(r)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintln(w, "Unable to retrieve user information!")
+		return
+	}
+
+	ok, err := uc.Db.GetUserPost(user, id)
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		log.Println(err.Error())
+		fmt.Fprintln(w, "Cannot edit post: "+"Post ID is not associated with user")
+	}
 	if err := json.NewDecoder(r.Body).Decode(&post); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintln(w, "Error decoding JSON")
 		return
 	}
 
-	err := uc.Db.UpdatePost(w, id, post)
+	err = uc.Db.UpdatePost(w, user, id, post)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
+		log.Println(err)
 		fmt.Fprintln(w, "An error occurred while updating post, please try again...")
 		return
 	}
